@@ -1,0 +1,30 @@
+############# Methods to implement ##################
+bool check_switch(); #here we check the slide switch if it is open we proceed if not the program stalls there until the switch is on
+void stop_w_err(string error); #this method will be used to halt any operation with a message in case of error if the lcd is not connected the led will blink. If the lcd is connected depending on the component not working the lcd will say so. And the led will blink.
+void init_lcd();
+void init_sd();
+void init_gps();
+void create_csv_sd(); #since we init the gps we can get a timestamp and use that to name the csv with current date
+void read_values_gps(); #lat, long, alt, timestp, satellites numb
+String format_data(); #will take the raw data and format it so that the write can send it to the sd
+void write_values_gps_sd_lcd(String data);
+
+# here the main logic and most calls will take place
+void main(){
+while (check_switch()){
+init_lcd();
+init_sd();
+init_gps();
+create_csv_sd();
+...
+}
+
+#typical init what it needs to have
+#check if the device is connected
+#check if operation is correct
+
+#errormessages should be generated locally
+#data when written can be written on both the lcd and the sd just write different format
+
+
+
