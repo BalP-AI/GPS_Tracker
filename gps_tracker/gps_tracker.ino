@@ -24,7 +24,7 @@
 #define TX 21
 #define RX 20
 
-HardwareSerial gpss(2);
+HardwareSerial gpss(1);
 
 // Create display object (I2C address 0x3C is default)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
@@ -64,20 +64,19 @@ void setup() {
 }
 
 void loop() {
-  while (gpss.available() > 0) {
-    gps.encode(gpss.read());
-    if (gps.location.isUpdated()) {
-      Serial.print("Latitude= ");
-      Serial.print(gps.location.lat(), 6);
-      Serial.print(" Longitude= ");
-      Serial.println(gps.location.lng(), 6);
-      display.clearDisplay();
-      display.print("Lat = ");
-      display.print(gps.location.lat(), 6);
-      display.println("Lon = ");
-      display.print(gps.location.lng(), 6);
-      display.display();
-    }
+
+  gps.encode(gpss.read());
+  if (gps.location.isUpdated()) {
+    Serial.print("Latitude= ");
+    Serial.print(gps.location.lat(), 6);
+    Serial.print(" Longitude= ");
+    Serial.println(gps.location.lng(), 6);
+    display.clearDisplay();
+    display.print("Lat = ");
+    display.print(gps.location.lat(), 6);
+    display.println("Lon = ");
+    display.print(gps.location.lng(), 6);
+    display.display();
   }
 }
 
@@ -91,7 +90,7 @@ void stop_w_err(const String &msg) {
     display.setCursor(0, 0);              // Start at top-left corner
     display.println(msg);
     display.display();
-    
+
   } else {
     pinMode(LED_PIN, OUTPUT);
     while (true) {
@@ -154,19 +153,28 @@ void init_gps() {
   display.println("GPS fix...");
   display.display();
 
-  while (true) {
-    delay(1000);
-    Serial.println(gpss.available());
+  bool gps_fixed = false;
+  while (!gps_fixed) {
+    delay(500);
+
     if (gpss.available()) {
       String line = gpss.readStringUntil('\n');
-      if (line.indexOf(",1,") > 0) {
-        display.println("GPS Fix ✓");
-        display.display();
-      }else {
+      line.trim();
+      
+      if (line.startsWith("$GPGGA") || line.startsWith("$GNGGA")) {
+        if (line.indexOf(",1,") >= 0 || line.indexOf(",2,") >= 0) {
+          display.println("GPS Fix V");
+          display.display();
+          gps_fixed = true;
+        } else {
+          Serial.println("No fix yet");
+        }
+      } else {
         Serial.println(line);
       }
     } else {
-      stop_w_err("No GPS");
+      // no data right now; don't call stop_w_err repeatedly
+      // simply wait and loop again
     }
   }
 }
