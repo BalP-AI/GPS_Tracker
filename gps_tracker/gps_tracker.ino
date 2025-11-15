@@ -1,21 +1,37 @@
-#include <HardwareSerial.h>
-#include <LiquidCrystal_I2C.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+//#include <SoftwareSerial.h>
 #include <TinyGPSPlus.h>
 #include <Wire.h>
+#include "FS.h"
+#include "SD.h"
+#include "SPI.h"
 
-#define LED_PIN 3
+//Generic warning LED
+#define LED_PIN 0
 
-#define RX 20
-#define TX 21
+// I2C PINS for communicating with OLED
+#define I2C_SCL 1
+#define I2C_SDA 2
 
-//iquidCrystal_I2C lcd(0x27, 16, 2);
+// OLED display size
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+
+//SD CARD
+
+#define TX 20
+#define RX 21
+
+
+
+// Create display object (I2C address 0x3C is default)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 // ##################### PROTOTYPES ###################################
-bool check_switch();  // TODO finish this on circuit first here we check the
-                      // slide switch if it is open we proceed if not the program
-                      // stalls there until the switch is on
-void stop_w_err(
-  const String &msg); /*this method will be used to halt any operation with a
-                           message in case of error */
+bool check_switch();                // TODO finish this on circuit first here we check the
+                                    // slide switch if it is open we proceed if not the program
+                                    // stalls there until the switch is on
+void stop_w_err(const String &msg); /*this method will be used to halt any operation with a message in case of error */
 void init_lcd();
 void init_sd();
 void init_gps();
@@ -25,54 +41,127 @@ void read_values_gps();  // Lat, long, alt, timestp, satellites numb
 String format_data();    // will take the raw data and format it so that the write
                          // can send it to the sd
 void write_values_gps_sd_lcd(String data);
-
+//create a gps object
 TinyGPSPlus gps;
-HardwareSerial GPS(1);  // Use UART1
+// Serial for GPS
+//SoftwareSerial ss(RX, TX);
 
 void setup() {
+
+
+  Serial.begin(9600);  // START UART0 PC
   pinMode(LED_PIN, OUTPUT);
-  Serial.begin(115200);  // START UART0 PC
-  //GPS.begin(115200, SERIAL_8N1, RX, TX); // Start UART1 GPS
+  // GPS.begin(115200, SERIAL_8N1, RX, TX); // Start UART1 GPS
+  delay(1000);
   Serial.println("Hello from ESP32-C3!!!");
+  Wire.begin(I2C_SDA, I2C_SCL);
   init_lcd();
+  init_sd();
+  init_gps();
 }
 
 void loop() {
-  Serial.print("LOOP");
+  while (ss.available() > 0) {
+    gps.encode(ss.read());
+    if (gps.location.isUpdated()) {
+      Serial.print("Latitude= ");
+      Serial.print(gps.location.lat(), 6);
+      Serial.print(" Longitude= ");
+      Serial.println(gps.location.lng(), 6);
+      display.clearDisplay();
+      display.print("Lat = ");
+      display.print(gps.location.lat(), 6);
+      display.println("Lon = ");
+      display.print(gps.location.lng(), 6);
+      display.display();
+    }
+  }
 }
-// TODO add lcd in case the lcd is connected
+}
+// TODO add lcd  cases in case the lcd is connected
 void stop_w_err(const String &msg) {
   // show message if not empty
   if (msg.length() > 0) {
-    //lcd.clear();
-    //lcd.print(msg);
+    display.clearDisplay();               // Clear buffer
+    display.setTextSize(2);               // Normal 1:1 pixel scale
+    display.setTextColor(SSD1306_WHITE);  // Draw white text
+    display.setCursor(0, 0);              // Start at top-left corner
+    display.println(msg);
+    display.display();
     Serial.print(msg);
-  }
-  pinMode(LED_PIN, OUTPUT);
-  while (true) {
-    digitalWrite(LED_PIN, HIGH);
-    delay(500);
-    digitalWrite(LED_PIN, LOW);
-    delay(500);
+  } else {
+    pinMode(LED_PIN, OUTPUT);
+    while (true) {
+      digitalWrite(LED_PIN, HIGH);
+      delay(500);
+      digitalWrite(LED_PIN, LOW);
+      delay(500);
+    }
   }
 }
 
 void init_lcd() {
-  Wire.begin();
+
   int i2c = 0b0000000;
+  // Detect if the display is connected first
   for (int i = 0; i < 127; i++) {
     Serial.print("Search at [");
     Serial.print(i2c, HEX);
     Serial.print("]: ");
     Wire.beginTransmission(i2c);
+    delay(10);
     byte busStatus = Wire.endTransmission();
     if (busStatus == 0) {
-      Serial.println("FOUND!");
-      break;
+      Serial.println("OLED FOUND!");
+      // Initialize display
+      if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+        Serial.println(F("SSD1306 allocation failed"));
+        for (;;)
+          ;  // Don't proceed, loop forever
+      }
+
+      display.clearDisplay();               // Clear buffer
+      display.setTextSize(1);               // Normal 1:1 pixel scale
+      display.setTextColor(SSD1306_WHITE);  // Draw white text
+      display.setCursor(0, 0);              // Start at top-left corner
+      display.println("OLED V");            // Next line
+      display.display();
+      return;
     } else {
-      Serial.println("not found");
-      stop_w_err("");
+      Serial.println("OLED NOT FOUND");
+      if (i == 126) {
+        stop_w_err("");
+      }
     }
     i2c++;
+  }
+}
+
+void init_sd() {
+  if (!SD.begin()) {
+    stop_w_err("No SD Card");
+    return;
+  } else {
+    display.println("SD Card V");
+    display.display();
+  }
+}
+
+void init_gps() {
+  Serial2.begin(9600, SERIAL_8N1, RX, TX);  // Initialize GPS on Serial2
+  delay(500);
+
+  display.println("GPS fix...");
+  display.display();
+
+  while (true) {
+    delay(100);
+    if (Serial2.available()) {
+      String line = Serial2.readStringUntil('\n');
+      if (line.indexOf(",1,") > 0) {
+        display.println("GPS Fix ✓");
+        display.display();
+      }
+    }
   }
 }
