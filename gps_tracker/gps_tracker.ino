@@ -1,5 +1,6 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <HardwareSerial.h>
 //#include <SoftwareSerial.h>
 #include <TinyGPSPlus.h>
 #include <Wire.h>
@@ -18,12 +19,12 @@
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 32
 
-//SD CARD
+//GPS PINS
 
-#define TX 20
-#define RX 21
+#define TX 21
+#define RX 20
 
-
+HardwareSerial gpss(2);
 
 // Create display object (I2C address 0x3C is default)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
@@ -50,6 +51,8 @@ void setup() {
 
 
   Serial.begin(9600);  // START UART0 PC
+  delay(500);
+  gpss.begin(9600, SERIAL_8N1, RX, TX);  // Initialize GPS on gpss
   pinMode(LED_PIN, OUTPUT);
   // GPS.begin(115200, SERIAL_8N1, RX, TX); // Start UART1 GPS
   delay(1000);
@@ -61,8 +64,8 @@ void setup() {
 }
 
 void loop() {
-  while (ss.available() > 0) {
-    gps.encode(ss.read());
+  while (gpss.available() > 0) {
+    gps.encode(gpss.read());
     if (gps.location.isUpdated()) {
       Serial.print("Latitude= ");
       Serial.print(gps.location.lat(), 6);
@@ -77,7 +80,7 @@ void loop() {
     }
   }
 }
-}
+
 // TODO add lcd  cases in case the lcd is connected
 void stop_w_err(const String &msg) {
   // show message if not empty
@@ -88,7 +91,7 @@ void stop_w_err(const String &msg) {
     display.setCursor(0, 0);              // Start at top-left corner
     display.println(msg);
     display.display();
-    Serial.print(msg);
+    
   } else {
     pinMode(LED_PIN, OUTPUT);
     while (true) {
@@ -148,20 +151,22 @@ void init_sd() {
 }
 
 void init_gps() {
-  Serial2.begin(9600, SERIAL_8N1, RX, TX);  // Initialize GPS on Serial2
-  delay(500);
-
   display.println("GPS fix...");
   display.display();
 
   while (true) {
-    delay(100);
-    if (Serial2.available()) {
-      String line = Serial2.readStringUntil('\n');
+    delay(1000);
+    Serial.println(gpss.available());
+    if (gpss.available()) {
+      String line = gpss.readStringUntil('\n');
       if (line.indexOf(",1,") > 0) {
         display.println("GPS Fix ✓");
         display.display();
+      }else {
+        Serial.println(line);
       }
+    } else {
+      stop_w_err("No GPS");
     }
   }
 }
