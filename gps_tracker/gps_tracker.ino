@@ -41,7 +41,7 @@ void create_csv_sd();    // since we init the gps we can get a timestamp and use
 void read_values_gps();  // Lat, long, alt, timestp, satellites numb
 String format_data();    // will take the raw data and format it so that the write
                          // can send it to the sd
-void write_values_gps_sd_lcd(String data);
+void write_values_gps_sd_lcd(float lat, float lon, float alt, int sats, int hdop);
 //create a gps object
 TinyGPSPlus gps;
 // Serial for GPS
@@ -61,31 +61,66 @@ void setup() {
   init_lcd();
   init_sd();
   init_gps();
-}
-
-void loop() {
-
+  create_csv_sd();
+  delay(1000);
   gps.encode(gpss.read());
-  Serial.println(gps.location.isUpdated());
-  if (gps.location.isUpdated()) {
-    
-    Serial.print("Latitude= ");
-    Serial.println(gps.location.lat(), 6);
-    Serial.print(" Longitude= ");
-    Serial.println(gps.location.lng(), 6);
-          display.setCursor(0, 0);              // Start at top-left corner
-
-    display.clearDisplay();
-    display.print("Lat = ");
-    display.println(gps.location.lat(), 6);
-    display.print("Lon = ");
-    display.println(gps.location.lng(), 6);
-    display.print("Sat = ");
-    display.println(gps.satellites.value());
-    display.display();
-  }
-  delay(5000);
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print("Lat = ");
+  display.println(gps.location.lat(), 6);
+  display.print("Lon = ");
+  display.println(gps.location.lng(), 6);
+  display.print("Sat = ");
+  display.println(gps.satellites.value());
+  display.display();
 }
+//TODO ADD CHECK AND DISPLAY WHEN FIX IS LOST and SD CARD gets disconected during 
+void loop() {
+  if (gpss.available()) {
+  gps.encode(gpss.read());
+}
+
+bool locUpdated = gps.location.isUpdated();
+bool locValid   = gps.location.isValid();
+if (locUpdated && locValid) {
+  Serial.print("Latitude= ");
+  Serial.print(gps.location.lat(), 6);
+  Serial.print(" Longitude= ");
+  Serial.println(gps.location.lng(), 6);
+
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print("Lat = ");
+  display.println(gps.location.lat(), 6);
+  display.print("Lon = ");
+  display.println(gps.location.lng(), 6);
+      display.print("Alt = ");
+
+  if (gps.altitude.isValid()){
+    display.println(gps.altitude.meters());
+    }else{
+      display.println("N/A");
+    }
+  display.print("Stl = ");
+  display.print(gps.satellites.value());
+  display.print(" Tmsp=");
+  display.print(gps.time.hour());
+  display.print(":");
+  display.print(gps.time.minute());
+  display.print(":");
+  display.println(gps.time.second());
+  display.display();
+
+  write_values_gps_sd_lcd(gps.location.lat(),
+                         gps.location.lng(),
+                         gps.altitude.meters(),
+                         gps.satellites.value(),
+                         gps.hdop.value() / 100.0);
+}
+
+  }
+  
+
 
 // TODO add lcd  cases in case the lcd is connected
 void stop_w_err(const String &msg) {
@@ -161,35 +196,74 @@ void init_gps() {
   display.display();
 
   bool gps_fixed = false;
-  while (!gps_fixed) {
-    delay(500);
-gps.encode(gpss.read());
 
-Serial.print("\n Satelites = ");
-Serial.println(gps.satellites.value());
-display.clearDisplay();
-display.setCursor(0, 0); 
-display.print("Sat =") ;
-display.print(gps.satellites.value());
-display.display();
-          display.display();    if (gpss.available()) {
-      String line = gpss.readStringUntil('\n');
-      line.trim();
-      //TODO change this check with the TIny gps gps.satellite.value() and check that way
-      if (line.startsWith("$GPGGA") || line.startsWith("$GNGGA")) {
-        if (line.indexOf(",1,") >= 0 || line.indexOf(",2,") >= 0) {
-          display.println("GPS Fix V");
-          display.display();
-          gps_fixed = true;
-        } else {
-          Serial.println("No fix yet");
-        }
+  while (!gps_fixed) {
+    while (gpss.available() > 0) {
+      gps.encode(gpss.read());
+
+      if (gps.location.isUpdated() && gps.location.isValid()) {
+        display.println("GPS Fix V");
+        display.display();
+        gps_fixed = true;
+
+        Serial.print("Lat: ");
+        Serial.println(gps.location.lat(), 6);
+        Serial.print("Lng: ");
+        Serial.println(gps.location.lng(), 6);
+        Serial.print("Satellites: ");
+        Serial.println(gps.satellites.value());
+        Serial.print("HDOP: ");
+        Serial.println(gps.hdop.value());
       } else {
-        Serial.println(line);
+        Serial.println("No fix yet");
       }
-    } else {
-      // no data right now; don't call stop_w_err repeatedly
-      // simply wait and loop again
     }
+    delay(1000);
+  }
+}
+
+void create_csv_sd() {
+  String filename = "Test1";
+  // Check if file already exists
+  if (SD.exists(filename)) {
+    Serial.println("CSV file already exists. Nothing new created.");
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.println("CSV V");
+    return;
+  }
+
+  // Create new file and write header
+  File file = SD.open(filename, FILE_WRITE);
+  if (file) {
+    file.println("Time,Latitude,Longitude,Altitude,Satellites,HDOP");  // Example header
+    file.close();
+    Serial.println("CSV file created with header.");
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.println("CSV V");
+  } else {
+    Serial.println("Error creating CSV file!");
+  }
+}
+
+void write_values_gps_sd_lcd(float lat, float lon, float alt, int sats, int hdop) {
+  String filename = "Test1";
+  File file = SD.open(filename, FILE_WRITE);
+  if (file) {
+    file.print(millis());
+    file.print(",");
+    file.print(lat, 6);
+    file.print(",");
+    file.print(lon, 6);
+    file.print(",");
+    file.print(alt);
+    file.print(",");
+    file.print(sats);
+    file.print(",");
+    file.println(hdop);
+    file.close();
+  } else {
+    Serial.println("Error opening file for writing!");
   }
 }
