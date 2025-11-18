@@ -25,10 +25,12 @@
 #define RX 20
 
 HardwareSerial gpss(1);
-HardwareSerial gpss(1);
+
 
 // Create display object (I2C address 0x3C is default)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+String filename;
 // ##################### PROTOTYPES ###################################
 bool check_switch();                // TODO finish this on circuit first here we check the
                                     // slide switch if it is open we proceed if not the program
@@ -40,14 +42,13 @@ void init_gps();
 void create_csv_sd();    // since we init the gps we can get a timestamp and use
                          // that to name the csv with current date
 void read_values_gps();  // Lat, long, alt, timestp, satellites numb
-String format_data();    // will take the raw data and format it so that the write
                          // can send it to the sd
-void write_values_gps_sd_lcd(float lat, float lon, float alt, int sats, int hdop);
-void write_values_gps_sd_lcd(float lat, float lon, float alt, int sats, int hdop);
+void write_values_gps_sd_lcd(const char *timestamp,float lat, float lon, float alt, float hdop);
 //create a gps object
 TinyGPSPlus gps;
 // Serial for GPS
 //SoftwareSerial ss(RX, TX);
+
 
 void setup() {
 
@@ -63,9 +64,9 @@ void setup() {
   init_lcd();
   init_sd();
   init_gps();
+  gps.encode(gpss.read());
   create_csv_sd();
   delay(1000);
-  gps.encode(gpss.read());
   display.clearDisplay();
   display.setCursor(0, 0);
   display.print("Lat = ");
@@ -80,7 +81,7 @@ void setup() {
 void loop() {
   if (gpss.available()) {
   gps.encode(gpss.read());
-}
+  }
 
 bool locUpdated = gps.location.isUpdated();
 bool locValid   = gps.location.isValid();
@@ -112,17 +113,20 @@ if (locUpdated && locValid) {
   display.print(":");
   display.println(gps.time.second());
   display.display();
-
-  write_values_gps_sd_lcd(gps.location.lat(),
+  char tbuf[9]; // "HH:MM:SS" + null
+  sprintf(tbuf, "%02d:%02d:%02d",
+        gps.time.hour(),
+        gps.time.minute(),
+        gps.time.second());
+  write_values_gps_sd_lcd(tbuf,gps.location.lat(),
                          gps.location.lng(),
                          gps.altitude.meters(),
-                         gps.satellites.value(),
                          gps.hdop.value() / 100.0);
-}
+
 
   }
   
-
+}
 
 // TODO add lcd  cases in case the lcd is connected
 void stop_w_err(const String &msg) {
@@ -148,7 +152,7 @@ void stop_w_err(const String &msg) {
 }
 
 void init_lcd() {
-
+//TODO just check the regular adress instead of searching for the address
   int i2c = 0b0000000;
   // Detect if the display is connected first
   for (int i = 0; i < 127; i++) {
@@ -198,15 +202,7 @@ void init_gps() {
   display.println("GPS fix...");
   display.display();
 
-  bool gps_fixed = false;
-
-  while (!gps_fixed) {
-    while (gpss.available() > 0) {
-      gps.encode(gpss.read());
-
-      if (gps.location.isUpdated() && gps.location.isValid()) {
-        display.println("GPS Fix V");
-  bool gps_fixed = false;
+   bool gps_fixed = false;
 
   while (!gps_fixed) {
     while (gpss.available() > 0) {
@@ -234,35 +230,45 @@ void init_gps() {
 }
 
 void create_csv_sd() {
-  String filename = "Test1";
+  
+  filename = String(gps.date.day())+"-"+String(gps.date.month())+"-"+String(gps.date.year())+".csv";
+  //filename = "TEST.txt";
   // Check if file already exists
-  if (SD.exists(filename)) {
+  if (SD.exists("/"+filename)) {
     Serial.println("CSV file already exists. Nothing new created.");
     display.clearDisplay();
     display.setCursor(0, 0);
-    display.println("CSV V");
+    display.println("CSV EXISTS V");
+    display.display();
+    delay(2000);
     return;
   }
 
   // Create new file and write header
-  File file = SD.open(filename, FILE_WRITE);
+  File file = SD.open("/"+filename, FILE_WRITE);
   if (file) {
-    file.println("Time,Latitude,Longitude,Altitude,Satellites,HDOP");  // Example header
+    file.println("Time,Latitude,Longitude,Altitude,HDOP");  // Example header
+    file.flush();
     file.close();
     Serial.println("CSV file created with header.");
     display.clearDisplay();
     display.setCursor(0, 0);
-    display.println("CSV V");
+    display.println("CSV CREATED V");
+    display.display();
+    delay(2000);
   } else {
-    Serial.println("Error creating CSV file!");
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.println("CSV CREATED X");
+    display.display();
+    delay(2000);
   }
 }
 
-void write_values_gps_sd_lcd(float lat, float lon, float alt, int sats, int hdop) {
-  String filename = "Test1";
-  File file = SD.open(filename, FILE_WRITE);
+void write_values_gps_sd_lcd(const char *timestamp,float lat, float lon, float alt, float hdop) {
+  File file = SD.open("/"+filename, FILE_APPEND);
   if (file) {
-    file.print(millis());
+    file.print(timestamp);
     file.print(",");
     file.print(lat, 6);
     file.print(",");
@@ -270,11 +276,13 @@ void write_values_gps_sd_lcd(float lat, float lon, float alt, int sats, int hdop
     file.print(",");
     file.print(alt);
     file.print(",");
-    file.print(sats);
-    file.print(",");
-    file.println(hdop);
+    file.println(hdop,2);
+    file.flush();
     file.close();
   } else {
-    Serial.println("Error opening file for writing!");
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.println("SD ERR WRITING");
+    display.display();
   }
 }
