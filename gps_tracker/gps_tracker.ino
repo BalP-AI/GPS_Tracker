@@ -25,6 +25,7 @@
 #define RX 20
 
 HardwareSerial gpss(1);
+HardwareSerial gpss(1);
 
 // Create display object (I2C address 0x3C is default)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
@@ -41,6 +42,7 @@ void create_csv_sd();    // since we init the gps we can get a timestamp and use
 void read_values_gps();  // Lat, long, alt, timestp, satellites numb
 String format_data();    // will take the raw data and format it so that the write
                          // can send it to the sd
+void write_values_gps_sd_lcd(float lat, float lon, float alt, int sats, int hdop);
 void write_values_gps_sd_lcd(float lat, float lon, float alt, int sats, int hdop);
 //create a gps object
 TinyGPSPlus gps;
@@ -133,6 +135,7 @@ void stop_w_err(const String &msg) {
     display.println(msg);
     display.display();
 
+
   } else {
     pinMode(LED_PIN, OUTPUT);
     while (true) {
@@ -195,6 +198,14 @@ void init_gps() {
   display.println("GPS fix...");
   display.display();
 
+  bool gps_fixed = false;
+
+  while (!gps_fixed) {
+    while (gpss.available() > 0) {
+      gps.encode(gpss.read());
+
+      if (gps.location.isUpdated() && gps.location.isValid()) {
+        display.println("GPS Fix V");
   bool gps_fixed = false;
 
   while (!gps_fixed) {
